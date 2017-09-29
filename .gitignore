@@ -1,0 +1,9 @@
+# ignore the pycache directory
+__pycache__
+
+# ignore object files
+*.o
+
+# ignore the main executable
+main
+

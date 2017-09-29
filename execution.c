@@ -56,3 +56,16 @@ void exec_main(cpucore_t *cpu, sysmem_t *sysmem) {
         dbg_prntmemblk(sysmem, (memaddr_t) cpu->rpc, PC_MEMBLK_PRNTSZ);
     }
 }
+
+
+// loads an assembled binary into sysmem at a specified location from a file
+void exec_loadbin(sysmem_t *sysmem, memaddr_t addr, char *fname) {
+    // read instructions into sysmem from a file
+    FILE *fp = fopen(fname, "rb");
+    // find out how many instructions are in the file
+    unsigned short n_instr;
+    fread(&n_instr, 2, 1, fp);
+    // read the instructions directly into sysmem at specified address
+    fread(sysmem->mem + addr, INSTR_SIZE, n_instr, fp);
+    fclose(fp);
+}

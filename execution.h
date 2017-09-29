@@ -36,5 +36,8 @@
 // loop until a halt instruction is reached
 void exec_main(cpucore_t*, sysmem_t*);
 
+
+// loads an assembled binary into sysmem at a specified location from a file
+void exec_loadbin(sysmem_t*, memaddr_t, char*);
     
 #endif

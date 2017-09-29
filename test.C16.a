@@ -1,0 +1,21 @@
+# test C16_VM assembly program
+#
+#   halves 4 5 times in a loop
+
+_main_:
+    ISET    ia1     0x05
+    ISET    ia2     0x01
+    FSET    fa0     4
+    FSET    fa1     2
+    JUMP    lp
+
+lp:
+    FDIV    fa0 fa1
+    IADD    ia0 ia2
+    IJLT    ia0 ia1 lp
+    JUMP    end
+
+end:
+    FADD    frv fa0
+    HALT
+

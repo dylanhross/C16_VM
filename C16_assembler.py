@@ -66,8 +66,17 @@ Instruction
         # immediate value instructions
         "ISET":b'\x20',
         "FSET":b'\x21',
+        # move instructions
+        "IMOV":b'\x22',
+        "FMOV":b'\x23',
+        "IMEQ":b'\x24',
+        "IMNE":b'\x25',
+        "IMLT":b'\x26',
+        "IMLE":b'\x27',
+        "IMGT":b'\x28',
+        "IMGE":b'\x29',
         # end of execution
-        "HALT":b'\x22'}
+        "HALT":b'\x2A'}
     # dictionary mapping the various instruction formats to opcodes
     instr_fmts = {
             # OPCODE
@@ -106,6 +115,15 @@ Instruction
             "FMUL":["op", "reg", "reg"],
             "FSUB":["op", "reg", "reg"],
             "FDIV":["op", "reg", "reg"],
+            "IMOV":["op", "reg", "reg"],
+            "FMOV":["op", "reg", "reg"],
+            # OPCODE REG REG REG REG
+            "IMEQ":["op", "reg", "reg", "reg", "reg"],
+            "IMNE":["op", "reg", "reg", "reg", "reg"],
+            "IMLT":["op", "reg", "reg", "reg", "reg"],
+            "IMLE":["op", "reg", "reg", "reg", "reg"],
+            "IMGT":["op", "reg", "reg", "reg", "reg"],
+            "IMGE":["op", "reg", "reg", "reg", "reg"],
             # OPCODE REG REG IMM_SHORT
             "IJEQ":["op", "reg", "reg", "imm_short"],
             "IJGT":["op", "reg", "reg", "imm_short"],
@@ -230,7 +248,7 @@ Assembler.parseSource
                                 req_addr = True
                                 # add the line as a string instead of as an Instruction
                                 self.labels_[current_label].append(ls)
-                        if not req_addr:
+                        if not req_addr and ls[0][0] != "#":
                             # for all others add an Instruction object
                             self.labels_[current_label].append(Instruction(ls))
 
@@ -284,7 +302,10 @@ Assembler.buildBinary
                             self.encoded_[need_label_trans[instr] + self.instr_size:]
         # store the number of instructions in the binary
         # stored encoded as an unsigned short (2bytes)
-        self.n_instr_ = bytearray.fromhex("0" + hex(int(len(self.encoded_) / self.instr_size)).lstrip("0").lstrip("x"))
+        hx = hex(int(len(self.encoded_) / self.instr_size)).lstrip("0").lstrip("x")
+        if len(hx) % 2:
+            hx = "0" + hx
+        self.n_instr_ = bytearray.fromhex(hx)
         # ensure the length is 2 bytes
         if len(self.n_instr_) < 2:
             self.n_instr_ += bytearray(b'\x00')
@@ -317,7 +338,7 @@ Assembler.writeBinary
 
 
 # testing purposes
-asm = Assembler("test.C16.a")
+asm = Assembler("f_isq.C16.a")
 for i in range(0, len(asm.encoded_), 6):
     print(asm.encoded_[i:i + 6].hex())
 asm.writeBinary()

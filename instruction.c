@@ -149,6 +149,32 @@ void instr_exec(cpucore_t *cpu, sysmem_t *sysmem, instr_t *instr) {
             cpucore_fsetr(cpu, INSTR_R0, INSTR_F);
             break;
         
+        // move instructions
+        case IMOV:
+            cpucore_imov(cpu, INSTR_R0, INSTR_R1);
+            break;
+        case FMOV:
+            cpucore_fmov(cpu, INSTR_R0, INSTR_R1);
+            break;
+        case IMEQ:
+            cpucore_imveq(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        case IMNE:
+            cpucore_imvne(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        case IMLT:
+            cpucore_imvlt(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        case IMLE:
+            cpucore_imvle(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        case IMGT:
+            cpucore_imvgt(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        case IMGE:
+            cpucore_imvge(cpu, INSTR_R0, INSTR_R1, INSTR_R2, INSTR_R3);
+            break;
+        
         // end of execution
         case HALT:
             cpu->stc = END_OF_EXECUTION;

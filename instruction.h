@@ -35,6 +35,7 @@
 //  [op][s0----]
 //  [op][r0][s1----]
 //  [op][r0][r1]
+//  [op][r0][r1][r2][r3]
 //  [op][r0][r1][s2----]
 //  [op][r0][f-------------]
 //
@@ -47,6 +48,8 @@ typedef struct { unsigned char data[INSTR_SIZE]; } instr_t;
 // shorthand for various argument access from instruction datastructure
 #define INSTR_R0 *(instr->data + 1)
 #define INSTR_R1 *(instr->data + 2)
+#define INSTR_R2 *(instr->data + 3)
+#define INSTR_R3 *(instr->data + 4)
 #define INSTR_S0 *((unsigned short*) (instr->data + 1))
 #define INSTR_S1 *((unsigned short*) (instr->data + 2))
 #define INSTR_S2 *((unsigned short*) (instr->data + 3))
@@ -98,8 +101,17 @@ typedef enum {
     // immediate value instructions
     ISET,   // 0x20
     FSET,   // 0x21
+    // move instructions
+    IMOV,   // 0x22
+    FMOV,   // 0x23
+    IMEQ,   // 0x24
+    IMNE,   // 0x25
+    IMLT,   // 0x26
+    IMLE,   // 0x27
+    IMGT,   // 0x28
+    IMGE,   // 0x29
     // end of execution
-    HALT    // 0x22
+    HALT    // 0x2A
 } instr_opdecode_t;
 
 // fills an instruction's data array with 0s

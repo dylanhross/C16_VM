@@ -18,4 +18,3 @@ lp:
 end:
     FADD    frv fa0
     HALT
-

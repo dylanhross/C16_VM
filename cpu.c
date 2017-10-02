@@ -237,19 +237,19 @@ void cpucore_iwtmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_iregs_t ireg, mema
 void cpucore_frdmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_fregs_t freg, memaddr_t addr) {
     switch (freg) {
         case fa0:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa0, addr);
+            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa0, addr);
             break;
         case fa1:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa1, addr);
+            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa1, addr);
             break;
         case fa2:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa2, addr);
+            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa2, addr);
             break;
         case fa3:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa3, addr);
+            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa3, addr);
             break;
         case frv:
-            cpu->stc = sysmem_fread(sysmem, &cpu->frv, addr);
+            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->frv, addr);
             break;
         default:
             // unrecognized value, error
@@ -568,10 +568,14 @@ void cpucore_iadd(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) 
     }
     switch (ireg1) {
         case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to add into
+            // rpc is not allowed to add into
             cpu->stc = ERR_IADD_REGNOTALWD;
+            break;
+        case rsp:
+            cpu->rsp = (unsigned short) sum;
+            break;
+        case rbp:
+            cpu->rbp = (unsigned short) sum;
             break;
         // the sum was already computed before, so just cast to short and set the 
         // value of the destination register to that
@@ -610,12 +614,16 @@ void cpucore_isub(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) 
     }
     switch (ireg1) {
         case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to add into
+            // rpc is not allowed to add into
             cpu->stc = ERR_ISUB_REGNOTALWD;
             break;
-        // the sum was already computed before, so just cast to short and set the 
+        case rsp:
+            cpu->rsp = (unsigned short) dif;
+            break;
+        case rbp:
+            cpu->rbp = (unsigned short) dif;
+            break;
+        // the difference was already computed before, so just cast to short and set the 
         // value of the destination register to that
         case ia0:
             cpu->ia0.us = dif;
@@ -964,6 +972,128 @@ void cpucore_fsetr(cpucore_t *cpu, cpucore_fregs_t freg, float value) {
         default:
             // set the error code
             cpu->stc = ERR_UNREC_FREG;
+    }
+}
+
+
+/* MOVE INSTRUCTIONS */
+
+// move integer value from r1 into r2 
+void cpucore_imov(cpucore_t *cpu, cpucore_iregs_t r1, cpucore_iregs_t r2) {
+    unsigned short value = cpucore_getiregv(cpu, r1);
+    switch (r2) {
+        case rpc:
+        case rsp:
+        case rbp:
+            // these registers are not allowed to assign immediate value into
+            cpu->stc = ERR_IMOV_REGNOTALWD;
+            break;
+        // the sum was already computed before, so just cast to short and set the 
+        // value of the destination register to that
+        case ia0:
+            cpu->ia0.us = value;
+            break;
+        case ia1:
+            cpu->ia1.us = value;
+            break;
+        case ia2:
+            cpu->ia2.us = value;
+            break;
+        case ia3:
+            cpu->ia3.us = value;
+            break;
+        case irv:
+            cpu->irv.us = value;
+            break;
+        default:
+            // unrecognized value, error
+            cpu->stc = ERR_UNREC_IREG;
+            break;
+    }
+}
+
+// move floating point value from r1 into r2 
+void cpucore_fmov(cpucore_t *cpu, cpucore_fregs_t r1, cpucore_fregs_t r2) {
+    float value = cpucore_getfregv(cpu, r1);
+    switch (r2) {
+        case fa0:
+            cpu->fa0 = value;
+            break;
+        case fa1:
+            cpu->fa1 = value;
+            break;
+        case fa2:
+            cpu->fa2 = value;
+            break;
+        case fa3:
+            cpu->fa3 = value;
+            break;
+        case frv:
+            cpu->frv = value;
+            break;
+        default:
+            // set the error code
+            cpu->stc = ERR_UNREC_FREG;
+    }
+}
+
+// integer move r1 into r2 if r3 == r4
+void cpucore_imveq(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) == cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
+    }
+}
+
+// integer move r1 into r2 if r3 != r4
+void cpucore_imvne(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) != cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
+    }
+}
+
+// integer move r1 into r2 if r3 < r4
+void cpucore_imvlt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) < cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
+    }
+}
+
+// integer move r1 into r2 if r3 <= r4
+void cpucore_imvle(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) <= cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
+    }
+}
+
+// integer move r1 into r2 if r3 > r4
+void cpucore_imvgt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) > cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
+    }
+}
+
+// integer move r1 into r2 if r3 >= r4
+void cpucore_imvge(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
+    if (ireg3 == ireg4) {
+        // cannot compare a register to itself
+        cpu->stc = ERR_IREG_CMPTOSELF;
+    } else if (cpucore_getiregv(cpu, ireg3) >= cpucore_getiregv(cpu, ireg4)) {
+        cpucore_imov(cpu, ireg1, ireg2);
     }
 }
 

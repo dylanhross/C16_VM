@@ -256,4 +256,31 @@ void cpucore_isetr(cpucore_t*, cpucore_iregs_t, unsigned short);
 void cpucore_fsetr(cpucore_t*, cpucore_fregs_t, float);
 
 
+/* MOVE INSTRUCTIONS */
+
+// move integer value from r1 into r2 
+void cpucore_imov(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
+
+// move floating point value from r1 into r2 
+void cpucore_fmov(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
+
+// integer move r1 into r2 if r1 == r2
+void cpucore_imveq(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+// integer move r1 into r2 if r1 != r2
+void cpucore_imvne(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+// integer move r1 into r2 if r1 < r2
+void cpucore_imvlt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+// integer move r1 into r2 if r1 <= r2
+void cpucore_imvle(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+// integer move r1 into r2 if r1 > r2
+void cpucore_imvgt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+// integer move r1 into r2 if r1 >= r2
+void cpucore_imvge(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+
+
 #endif

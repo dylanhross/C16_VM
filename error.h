@@ -25,6 +25,7 @@
 #define ERR_IMOD_REGNOTALWD 0x0C
 #define ERR_BIN_REGNOTALWD  0x0D
 #define ERR_IIMM_REGNOTALWD 0x0F
+#define ERR_IMOV_REGNOTALWD 0x10
 
 
 // memory error codes (unsigned char) start at 0x41

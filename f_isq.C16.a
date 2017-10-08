@@ -26,13 +26,18 @@
 
 
 _main_: 
+
+    ### 1.
     # store the original float value in fa0
     FSET    fa0 3.9
     # magic number stored in 2 unsigned shorts
-    ISET    ia0 0x375F
-    ISET    ia1 0xDF59
+    # each half is in little-endian
+    ISET    ia0 0xDF59
+    ISET    ia1 0x375F
     # push the original float value onto the stack
     FPSH    fa0
+    
+    ### 2.
     # do the bit shift on the original float value
     # lower 2 bytes
     IPOP    ia2
@@ -41,66 +46,64 @@ _main_:
     # save the upper 2 bytes for later
     IPSH    ia3
     # get the last bit of ia2
-    ISET    irv 0x0001
+    ISET    irv 0x01
     AND     ia3 irv
     # right shift the lower 2 bytes, add the final bit from the upper 2 bytes
-    RSFT    ia3 0x0F
+    LSFT    ia3 0x0F
     RSFT    ia2 0x01
     IADD    ia2 ia3
     # right shift the upper 2 bytes
     IPOP    ia3
     RSFT    ia3 0x01
     
-    
-    # subtract the shifted original number (in ia2 and ia3) from
-    # the magic number (in ia0 and ia1)
-
+    ### 3.
+    # subtract the shifted number from the magic number
+    # ia0 - magic number lower 2 bytes
+    # ia1 - magic number upper 2 bytes
+    # ia2 - shifted number lower 2 bytes
+    # ia3 - shifted number upper 2 bytes
+    # subtract the lower 2 bytes first then push the result onto the stack
     ISUB    ia0 ia2
     IPSH    ia0
-    IPSH    ia0
-    ISET    irv 0x01
+    # compute the carry bit
     AND     ia0 ia2
     AND     ia0 irv
-    IPOP    irv
     RSFT    ia2 0x01
-    RSFT    irv 0x01
     IADD    ia0 ia2
-    IADD    ia0 irv
-    IADD    ia3 ia0
+    # pop the low result into irv then push it onto the stack to save it
+    IPOP    irv
+    IPSH    irv
+    # right shift one then add the contents of ia0
+    RSFT    irv 0x01
+    IADD    irv ia0
+    # right shift the result by 15 to get the carry bit
+    RSFT    irv 0x0F
+    # add the carry bit to ia3 then subtract the result from ia1
+    IADD    ia3 irv
     ISUB    ia1 ia3
+    # pop the low result back into ia0
     IPOP    ia0
-    
-
-
-    
-    
-    # push the subtracted result onto the stack then pop into fa1
+    # push the result onto the stack
     IPSH    ia1
     IPSH    ia0
+    # pop the subtracted result into fa1
     FPOP    fa1
+    
+    ### 4.
     # 1 iteration of Newton's method on the value in fa1
-    # put 0.5 into fa2 then multiply by fa1 twice
-    #FSET    fa2 0.5
-    #FMUL    fa2 fa1
-    #FMUL    fa2 fa1
+    # put 0.5 into fa2 multiply by the original number 
+    # then multiply by fa1 twice
+    FSET    fa2 0.5
+    FMUL    fa2 fa0
+    FMUL    fa2 fa1
+    FMUL    fa2 fa1
     # put 1.5 into fa3 then subtract fa2 from that
-    #FSET    fa3 1.5
-    #FSUB    fa3 fa2
+    FSET    fa3 1.5
+    FSUB    fa3 fa2
     # multiply fa1 by fa3
-    #FMUL    fa1 fa3
+    FMUL    fa1 fa3
+    
     # put the final value into the return register
-    #FADD    frv fa1
+    FADD    frv fa1
 
-
-
-    
     HALT
-
-
-
-
-
-    
-
-    
-

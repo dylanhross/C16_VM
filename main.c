@@ -62,15 +62,25 @@ int main() {
     
     
     float f = 3.9;
+    float f2 = f * 0.5F;
     unsigned int ui = *((unsigned int*) &f), subbed;
     unsigned int magic = 0x5f3759df;
-    printf("  float (3.9) as unsigned int: 0x%04X\n", ui);
+    printf(" float (3.9) as unsigned int : 0x%04X\n", ui);
     printf("         right bit shifted 1 : 0x%04X\n", ui >> 1);
     printf("subtracted from magic number : 0x%04X\n", magic - (ui >> 1));
     subbed = magic - (ui >> 1);
     f = *((float *) &subbed);
     printf("               back to float : %f\n", f);
+    float f3 = f * (1.5F - (f2 * f * f));
+    printf("         after one iteration : %f\n", f3);
+    printf("        after two iterations : %f\n", f3 * (1.5F - (f2 * f3 * f3)));
     
+    
+    unsigned short us1, us2, us3;
+    us1 = 0x59DF;
+    us2 = 0xCCCD;
+    us3 = us1 - us2;
+    printf("0x%04X\n", us3);
     
 
     return 0;

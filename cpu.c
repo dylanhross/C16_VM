@@ -605,13 +605,7 @@ void cpucore_iadd(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) 
 // add i1 - i2 and store the result in i1
 void cpucore_isub(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
     // detect underflow and set the status code
-    unsigned short dif;
-    if (cpucore_getiregv(cpu, ireg2) > cpucore_getiregv(cpu, ireg1)) {
-        cpu->stc = ERR_ISUB_UNDRFLW;
-        dif = 0;
-    } else {
-        dif = cpucore_getiregv(cpu, ireg1) - cpucore_getiregv(cpu, ireg2);
-    }
+    unsigned short dif = cpucore_getiregv(cpu, ireg1) - cpucore_getiregv(cpu, ireg2);
     switch (ireg1) {
         case rpc:
             // rpc is not allowed to add into

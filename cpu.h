@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "memory.h"
+#include "instruction.h"
 #include "error.h"
 
 
@@ -147,6 +148,10 @@ core_t* core_init(uint8_t, sysmem_t*);
 
 // Frees memory associated with CPU core structure to de-initialize.
 void core_delete(core_t*);
+
+
+// decodes an instruction at a specified memory address and executes it
+void core_execute(core_t*, sysmem_t*, uint16_t, uint8_t);
 
 
 #endif

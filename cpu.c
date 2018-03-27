@@ -620,6 +620,14 @@ core_t* core_init(uint8_t cid, sysmem_t *smem) {
 
 
 // Frees memory associated with CPU core structure to de-initialize.
-void core_delete(core_t* core) {
+void core_delete(core_t *core) {
     free(core);
 }
+
+
+// Decodes an instruction at a specified memory address and executes it.
+void core_decode(core_t *core, sysmem_t *smem, uint16_t addr, uint8_t bit_offset) {
+    // decode the byte at the specified memory address bit by bit, starting at
+    // the offset 
+}
+

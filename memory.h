@@ -1,6 +1,9 @@
 /*
-    A simple Virtual Machine --> try #2
+    C16_VM_v3
     Dylan H. Ross
+    2017/11/24
+    
+    The third (and I pray final) iteration of my toy 16-bit virtual machine.
     
     memory.h
 */
@@ -10,76 +13,56 @@
 #define MEMORY_H
 
 
-#include "error.h"
+#include <stdlib.h>
 
-
-/*
-Memory Map:
-(mostly arbitrarily assigned)
-                 heap start                                         heap end
-                   0x4000                                           0xEF7E
-                     +-------------------------------------------------+
-program              |                                                 |    stack           stack
-counter init         |                                                 |     min            start
-0x0000               |                                                 |    0xF000          0xFFFF
-  |                  |                                                 |      +----------------+ 
-  |                  |                                                 |      |                |
-  V                  V                                                 V      V                V
-  [--------------------------------------------------------------------------------------------]
-0x0000                                                                  ^    ^              0xFFFF
- min                                                                    |    |               max
-address                                                                 |    |             address
-                                                                        +----+
-                                                                    0xEF7F  0xEFFF
-                                                                       terminal 
-                                                                      line buffer
+/* memory map:
+    0xFFFF -- maximum system memory address
+        |
+        |   <-- stack space (4 kB)
+        |
+    0xF05F -- initial stack pointer address, stack grows toward larger addresses
+        |
+        |   <-- general purpose read/write memory block
+        |
+    0x1F40
+        |
+        |   <-- read only memory block (8 kB) for program execution
+        |
+    0x0000 -- minimum system memory address
+    
 */
+#define MEMORY_MAXADDR  0xFFFF
+#define MEMORY_RWBLKMAX 0xF05F 
+#define MEMORY_RWBLKMIN 0x1F40
 
 
-// maximum memory address 
-#define SYSMEM_MAX_ADDR     0xFFFF
+// Main system memory data structure.
+typedef struct sysmem {
+    
+    // 65536 bytes map to "physical" address space of 0x0000 to 0xFFFF, 
+    // inclusive. Addressing is done using uint16_t values.
+    uint8_t mem[65536];
+    
+    // function pointers
+    // Set the address in memory to a value of a specified type.
+    void (*set_uint8) (struct sysmem*, uint16_t, uint8_t);
+    void (*set_uint16) (struct sysmem*, uint16_t, uint16_t);
+    void (*set_float) (struct sysmem*, uint16_t, float);
+    
+    // Get the value of a specified type at an address in memory.
+    uint8_t (*get_uint8) (struct sysmem*, uint16_t);
+    uint16_t (*get_uint16) (struct sysmem*, uint16_t);
+    float (*get_float) (struct sysmem*, uint16_t);
+
+} sysmem_t;
 
 
-// upper memory address bound for the stack 
-// 4096 bytes maximum stack size
-#define SYSMEM_STACK_MIN    0xF000
+// Allocates space for a new sysmem structure and returns a pointer to it.
+sysmem_t* sysmem_init();
 
 
-// memory address bounds for terminal output buffer
-// lies just above the stack
-// 128 ASCII characters
-#define SYSMEM_TERMLB_START 0xEF7F
-#define SYSMEM_TERMLB_END   0xEFFF
-
-
-// memory address bounds for heap memory
-// 44926 bytes maximum heap size
-#define SYSMEM_HEAP_START   0x4000
-#define SYSMEM_HEAP_END     0xEF7E
-
-
-// appropriate C type for representing addresses
-typedef unsigned short memaddr_t;
-
-
-// system memory, each memory location holds a single byte
-typedef struct { unsigned char mem[SYSMEM_MAX_ADDR + 1]; } sysmem_t;
-
-
-// write an integer value to a memory location
-unsigned char sysmem_iwrite(sysmem_t*, memaddr_t, unsigned short);
-
-
-// read an integer value from a memory location
-unsigned char sysmem_iread(sysmem_t*, unsigned short*, memaddr_t);
-
-
-// write an integer value to a memory location
-unsigned char sysmem_fwrite(sysmem_t*, memaddr_t, float);
-
-
-// read a float value from a memory location
-unsigned char sysmem_fread(sysmem_t*, float*, memaddr_t);
+// Frees memory associated with sysmem structure to de-initialize.
+void sysmem_delete(sysmem_t*);
 
 
 #endif

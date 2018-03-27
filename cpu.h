@@ -1,6 +1,9 @@
 /*
-    A simple Virtual Machine --> try #2
+    C16_VM_v3
     Dylan H. Ross
+    2017/11/24
+    
+    The third (and I pray final) iteration of my toy 16-bit virtual machine.
     
     cpu.h
 */
@@ -10,277 +13,145 @@
 #define CPU_H
 
 
+#include <stdint.h>
+#include <stdlib.h>
 #include "memory.h"
+#include "instruction.h"
 #include "error.h"
 
 
-// initial address for the program counter
-#define RPC_INIT 0x0000
-// initial stack pointer position
-#define RSP_INIT 0xFFFF
-// end of execution special status code
-#define END_OF_EXECUTION 0xFF
-
-
-// CPU 16 bit integer register
-//      can hold types:
-//          [un]signed short
-//          [un]signed char
-typedef union {
-    short            s;
-    unsigned short  us;
-    char             c;
-    unsigned char   uc;
+// enum for selecting integer registers
+// (includes: rsp, rbp, ir0-ir3, irv)
+typedef enum {
+    RPC,
+    RSP,
+    RBP,
+    IR0, IR1, IR2, IR3,
+    IRV
 } ireg_t;
 
 
-// data structure for a single CPU core, contains a complete complement of
-// registers of various types. This way multiple cores could theoretically
-// be used in the future, although I doubt I will make it that far.
+// enum for selecting floating point registers
+// (includes: fr0-fr3, frv)
+typedef enum {
+    FR0, FR1, FR2, FR3,
+    FRV
+} freg_t;
+
+// enum for representing the result of comparisons of two numbers
+// NA means uninitialized and will cause instructions that rely on comparisons
+// being done ahead of time to fail.
+typedef enum {
+    NA,
+    EQ,
+    GT,
+    LT
+} cmpres_t;
+
+
+// CPU core data structure
 //      registers:
 //          rpc -- program counter
 //          rsp -- stack pointer                     
 //          rbp -- base pointer                      (callee-saved)
-//          ia0, ia1, ia2, ia3 -- integer arguments  (callee-saved)
+//          ir0, ir1, ir2, ir3 -- integer arguments  (callee-saved)
 //          irv -- integer return value             (*caller-saved*)
-//          fa0, fa1, fa2, fa3 -- float arguments    (callee-saved)
+//          fr0, fr1, fr2, fr3 -- float arguments    (callee-saved)
 //          frv -- float return value               (*caller-saved*)
-typedef struct {
-    // core identifier
-    unsigned char   cid;
-    // status code
-    unsigned char   stc;
-    // these registers stored simply as unsigned shorts since they
-    // are all pointers
-    unsigned short  rpc;
-    unsigned short  rsp;
-    unsigned short  rbp;
-    // integer argument registers
-    ireg_t          ia0;
-    ireg_t          ia1;
-    ireg_t          ia2;
-    ireg_t          ia3;
-    // integer return value
-    ireg_t          irv;
-    // floating point
-    float           fa0;
-    float           fa1;
-    float           fa2;
-    float           fa3;
-    // float return value
-    float           frv;
-} cpucore_t;
-
-
-// enum mapping the integer cpu core registers to ints
-typedef enum {
-    rpc,
-    rsp,
-    rbp,
-    ia0,
-    ia1,
-    ia2,
-    ia3,
-    irv
-} cpucore_iregs_t;
-
-
-// enum mapping the float cpu core registers to ints
-typedef enum {
-    fa0,
-    fa1,
-    fa2,
-    fa3,
-    frv
-} cpucore_fregs_t;
-
-
-// initialize the cpu, zeros all registers and sets the program counter, stack pointer, 
-// and base pointer to their initial values
-void cpucore_init(cpucore_t*, unsigned char);
-
-
-// obtain the value from an integer register
-// can be used by functions that need to access the register values but not change them
-unsigned short cpucore_getiregv(cpucore_t*, cpucore_iregs_t);
-
-
-// obtain the value from a floating point register
-// can be used by functions that need to access the register values but not change them
-float cpucore_getfregv(cpucore_t*, cpucore_fregs_t);
-
-
-/* STACK INSTRUCTIONS */
-
-// push an integer value onto the stack from integer register, decrement stack
-// pointer by the size of the integer value 
-void cpucore_ipush(cpucore_t*, sysmem_t*, cpucore_iregs_t);
-
-// pop an integer value from the stack into the integer register destination, 
-// increment stack pointer
-void cpucore_ipop(cpucore_t*, sysmem_t*, cpucore_iregs_t);
-
-// push a float value onto the stack from float register, decrement stack
-// pointer by the size of the float value 
-void cpucore_fpush(cpucore_t*, sysmem_t*, cpucore_fregs_t);
-
-// pop a float value from the stack into the float register destination, 
-// increment stack pointer
-void cpucore_fpop(cpucore_t*, sysmem_t*, cpucore_fregs_t);
-
-
-/* MEMORY ACCESS INSTRUCTIONS */
-
-// reads an integer value from a memory location into an integer register
-void cpucore_irdmem(cpucore_t*, sysmem_t*, cpucore_iregs_t, memaddr_t);
-
-// writes an integer value to a memory location from an integer register
-void cpucore_iwtmem(cpucore_t*, sysmem_t*, cpucore_iregs_t, memaddr_t);
-
-// reads a float value from a memory location into a floatregister
-void cpucore_frdmem(cpucore_t*, sysmem_t*, cpucore_fregs_t, memaddr_t);
-
-// writes a float value to a memory location from a float register
-void cpucore_fwtmem(cpucore_t*, sysmem_t*, cpucore_fregs_t, memaddr_t);
-
-
-/* JUMP INSTRUCTIONS */
-
-// unconditional jump
-void cpucore_jmp(cpucore_t*, memaddr_t);
-
-// jump if two integer registers are equal
-void cpucore_ijeq(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, memaddr_t);
-
-// jump if integer register 1 > integer register 2
-void cpucore_ijgt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, memaddr_t);
-
-// jump if integer register 1 >= integer register 2
-void cpucore_ijge(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, memaddr_t);
-
-// jump if integer register 1 < integer register 2
-void cpucore_ijlt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, memaddr_t);
-
-// jump if integer register 1 <= integer register 2
-void cpucore_ijle(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, memaddr_t);
-
-
-/* BINARY ARITHMETIC INSTRUCTIONS */
-
-// perform bitwise and operation
-// computes i1 & i2 and stores the result in i1
-void cpucore_and(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// perform bitwise or operation
-// computes i1 | i2 and stores the result in i1
-void cpucore_or(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// perform bitwise xor operation
-// computes i1 ^ i2 and stores the result in i1
-void cpucore_xor(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// perform bitwise not operation
-// computes !i and stores the result in i
-void cpucore_not(cpucore_t*, cpucore_iregs_t);
-
-// perform a bitwise right shift by specified offset
-void cpucore_rshift(cpucore_t*, cpucore_iregs_t, unsigned char);
-
-// perform a bitwise left shift by specified offset
-void cpucore_lshift(cpucore_t*, cpucore_iregs_t, unsigned char);
-
-
-/* INTEGER ARITHMETIC INSTRUCTIONS */
-
-// add an integer register into another
-// add i1 + i2 and store the result in i1
-void cpucore_iadd(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// subtract an integer register from another 
-// add i1 - i2 and store the result in i1
-void cpucore_isub(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// multiply an integer register into another
-// multiply i1 * i2 and store the result in i1
-void cpucore_imul(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// divide an integer register into another 
-// divide i1 / i2 and store the result in i1
-void cpucore_idiv(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// calculate the modulus of one register divided into another 
-// mod i1 % i2 and store the result in i1
-void cpucore_imod(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-
-/* FLOATING POINT ARITHMETIC INSTRUCTIONS */
-
-// add a floating point register into another
-// add i1 + i2 and store the result in i1
-void cpucore_fadd(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
-
-// subtract a floating point register from another 
-// add i1 - i2 and store the result in i1
-void cpucore_fsub(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
-
-// multiply a floating point register into another
-// multiply i1 * i2 and store the result in i1
-void cpucore_fmul(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
-
-// divide a floating point register into another 
-// divide i1 / i2 and store the result in i1
-void cpucore_fdiv(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
-
-
-/* CALL/RETURN INSTRUCTIONS */
-
-// call
-// push callee-saved registers onto stack
-// push current execution address onto stack
-// jump to new execution address
-void cpucore_call(cpucore_t*, sysmem_t*, memaddr_t);
-
-// ret
-// pop execution address off of stack
-// jump to execution address
-// pop callee-saved registers off of stack
-void cpucore_ret(cpucore_t*, sysmem_t*);
-
-
-/* IMMEDIATE VALUE INSTRUCTIONS */
-
-// set integer register to immediate value
-void cpucore_isetr(cpucore_t*, cpucore_iregs_t, unsigned short);
-
-// set floating point register to immediate value
-void cpucore_fsetr(cpucore_t*, cpucore_fregs_t, float);
-
-
-/* MOVE INSTRUCTIONS */
-
-// move integer value from r1 into r2 
-void cpucore_imov(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t);
-
-// move floating point value from r1 into r2 
-void cpucore_fmov(cpucore_t*, cpucore_fregs_t, cpucore_fregs_t);
-
-// integer move r1 into r2 if r1 == r2
-void cpucore_imveq(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
-
-// integer move r1 into r2 if r1 != r2
-void cpucore_imvne(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
-
-// integer move r1 into r2 if r1 < r2
-void cpucore_imvlt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
-
-// integer move r1 into r2 if r1 <= r2
-void cpucore_imvle(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
-
-// integer move r1 into r2 if r1 > r2
-void cpucore_imvgt(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
-
-// integer move r1 into r2 if r1 >= r2
-void cpucore_imvge(cpucore_t*, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t, cpucore_iregs_t);
+typedef struct core {
+    
+    // miscellaneous CPU core data
+    uint8_t     cid;    // core ID (for multiple cores in one VM)
+    sysmem_t    *smem;  // pointer to system memory data structure
+    cmpres_t    rcmp;   // register for comparisons
+    errcode_t   stc;    // status code
+    
+    // integer registers (stored as unsigned 16-bit)
+    uint16_t    rpc;    // program counter
+    uint16_t    rsp;    // stack pointer
+    uint16_t    rbp;    // base pointer
+    uint16_t    ir0;    // general purpose integer register 0
+    uint16_t    ir1;    // general purpose integer register 1 
+    uint16_t    ir2;    // general purpose integer register 2 
+    uint16_t    ir3;    // general purpose integer register 3
+    uint16_t    irv;    // integer return value
+    
+    // floating point registers (stored as 32-bit floats)
+    float       fr0;    // general purpose floating point register 0
+    float       fr1;    // general purpose floating point register 1
+    float       fr2;    // general purpose floating point register 2
+    float       fr3;    // general purpose floating point register 3
+    float       frv;    // floating point return value
+    
+    // function pointers
+    // no operation
+    void (*noop) (struct core*);
+    // halt execution
+    void (*halt) (struct core*);
+    // compare two integer registers, store the result in the rcmp register
+    void (*cmpi) (struct core*, ireg_t, ireg_t);
+    // set an integer register to an immediate value
+    void (*seti) (struct core*, ireg_t, uint16_t);
+    // move a value from one integer register to another
+    void (*movi) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is EQ
+    void (*meqi) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is GT or LT
+    void (*mnei) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is GT or EQ
+    void (*mgei) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is GT
+    void (*mgti) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is LT or EQ
+    void (*mlei) (struct core*, ireg_t, ireg_t);
+    // move a value from register a to register b if rcmp is LT
+    void (*mlti) (struct core*, ireg_t, ireg_t);
+    // push and pop int values to and from the stack
+    void (*pshi) (struct core*, ireg_t);
+    void (*popi) (struct core*, ireg_t);
+    // load/store int value from/to memory
+    void (*lodi) (struct core*, uint16_t, ireg_t);
+    void (*stoi) (struct core*, ireg_t, uint16_t);
+    // compute address using a base address, offset and multiplier (1 or 2)
+    void (*leai) (struct core*, ireg_t, ireg_t, uint8_t, ireg_t);
+    // push and pop float values to and from the stack
+    void (*pshf) (struct core*, freg_t);
+    void (*popf) (struct core*, freg_t);
+    // execute a subroutine starting at a memory address
+    void (*call) (struct core*, uint16_t);
+    void (*retn) (struct core*);
+    // set float register value
+    void (*setf) (struct core*, freg_t, float);
+    // move float value from one register to another
+    void (*movf) (struct core*, freg_t, freg_t);
+    // load/store float value from/to memory
+    void (*lodf) (struct core*, uint16_t, freg_t);
+    void (*stof) (struct core*, freg_t, uint16_t);
+    // increment/decrement an integer register
+    void (*inci) (struct core*, ireg_t);
+    void (*deci) (struct core*, ireg_t);
+    // add/subtract values from integer registers A, B result in B
+    void (*addi) (struct core*, ireg_t, ireg_t);
+    void (*subi) (struct core*, ireg_t, ireg_t);
+    // add/subtract/multiply/divide float registers A, B result in B
+    void (*addf) (struct core*, freg_t, freg_t);
+    void (*subf) (struct core*, freg_t, freg_t);
+    void (*mulf) (struct core*, freg_t, freg_t);
+    void (*divf) (struct core*, freg_t, freg_t);
+    
+} core_t;
+
+
+// Allocates memory for a new CPU core structure and returns a pointer to it.
+core_t* core_init(uint8_t, sysmem_t*);
+
+
+// Frees memory associated with CPU core structure to de-initialize.
+void core_delete(core_t*);
+
+
+// decodes an instruction at a specified memory address and executes it
+void core_execute(core_t*, sysmem_t*, uint16_t, uint8_t);
 
 
 #endif

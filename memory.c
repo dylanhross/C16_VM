@@ -1,6 +1,9 @@
 /*
-    A simple Virtual Machine --> try #2
+    C16_VM_v3
     Dylan H. Ross
+    2017/11/24
+    
+    The third (and I pray final) iteration of my toy 16-bit virtual machine.
     
     memory.c
 */
@@ -9,62 +12,58 @@
 #include "memory.h"
 
 
-// write an integer value to a memory location
-unsigned char sysmem_iwrite(sysmem_t *sysmem, memaddr_t addr, unsigned short value) {
-    // check the address
-    if (addr > SYSMEM_MAX_ADDR) {
-        return ERR_SMEM_MAXADR;
-    }
-    // other memory address bounds checking can be done here as well
-    // assign the value to the memory location
-    *((unsigned short*)(sysmem->mem + addr)) = value;
-    // return 0 for success
-    return 0;
+// Set the address in memory to a uint8_t value.
+void _set_uint8(sysmem_t *smem, uint16_t addr, uint8_t val) {
+    *(smem->mem + addr) = val;
 }
 
 
-// read an integer value from a memory location
-unsigned char sysmem_iread(sysmem_t *sysmem, unsigned short *dest, memaddr_t addr) {
-    // check the address
-    if (addr > SYSMEM_MAX_ADDR) {
-        return ERR_SMEM_MAXADR;
-    }
-    // other memory address bounds checking can be done here as well
-    // assign the value from the memory location to the dereferenced pointer
-    // passed in
-    *dest = *((unsigned short*)(sysmem->mem + addr));
-    // return 0 for success
-    return 0;
+// Set the address in memory to a uint8_t value.
+void _set_uint16(sysmem_t *smem, uint16_t addr, uint16_t val) {
+    *((uint16_t*) (smem->mem + addr)) = val;
 }
 
 
-// write an integer value to a memory location
-unsigned char sysmem_fwrite(sysmem_t *sysmem, memaddr_t addr, float value) {
-    // check the address
-    if (addr > SYSMEM_MAX_ADDR) {
-        return ERR_SMEM_MAXADR;
-    }
-    // other memory address bounds checking can be done here as well
-    // assign the value to the memory location
-    *((float*)(sysmem->mem + addr)) = value;
-    // return 0 for success
-    return 0;
+// Set the address in memory to a float value.
+void _set_float(sysmem_t *smem, uint16_t addr, float val) {
+    *((float*) (smem->mem + addr)) = val;
 }
 
 
-// read an integer value from a memory location
-unsigned char sysmem_fread(sysmem_t *sysmem, float *dest, memaddr_t addr) {
-    // check the address
-    if (addr > SYSMEM_MAX_ADDR) {
-        return ERR_SMEM_MAXADR;
-    }
-    // other memory address bounds checking can be done here as well
-    // assign the value from the memory location to the dereferenced pointer
-    // passed in
-    *dest = *((float*)(sysmem->mem + addr));
-    // return 0 for success
-    return 0;
+// Get a uint8_t value from an address in memory.
+uint8_t _get_uint8(sysmem_t *smem, uint16_t addr) {
+    return *((uint8_t*) (smem->mem + addr));
 }
 
 
+// Get a uint16_t value from an address in memory.
+uint16_t _get_uint16(sysmem_t *smem, uint16_t addr) {
+    return *((uint16_t*) (smem->mem + addr));
+}
 
+
+// Get a float value from an address in memory.
+float _get_float(sysmem_t *smem, uint16_t addr) {
+    return *((float*) (smem->mem + addr));
+}
+
+
+// Allocates space for a new sysmem structure and returns a pointer to it.
+sysmem_t* sysmem_init() {
+    // allocate memory
+    sysmem_t *smem = calloc(1, sizeof(sysmem_t));
+    // set all of the function pointers
+    smem->set_uint8 = &_set_uint8;
+    smem->set_uint16 = &_set_uint16;
+    smem->set_float = &_set_float;
+    smem->get_uint8 = &_get_uint8;
+    smem->get_uint16 = &_get_uint16;
+    smem->get_float = &_get_float;
+    return smem;
+}
+
+
+// Frees memory associated with sysmem structure to de-initialize.
+void sysmem_delete(sysmem_t *smem) {
+    free(smem);
+}

@@ -1,6 +1,9 @@
 /*
-    A simple Virtual Machine --> try #2
+    C16_VM_v3
     Dylan H. Ross
+    2017/11/24
+    
+    The third (and I pray final) iteration of my toy 16-bit virtual machine.
     
     cpu.c
 */
@@ -8,1086 +11,623 @@
 
 #include "cpu.h"
 
-#include "debug.h"
-#include <stdio.h>
 
-
-// initialize the cpu, zeros all registers and sets the program counter, stack pointer, 
-// and base pointer to their initial values
-void cpucore_init(cpucore_t *cpu, unsigned char id) {
-    // set the core id and status code
-    cpu->cid = id;
-    cpu->stc = 0x00;
-    cpu->rpc = RPC_INIT;
-    cpu->rsp = RSP_INIT;
-    // base pointer starts off pointing at the same position as stack pointer
-    cpu->rbp = RSP_INIT;
-    // zero out all of the registers
-    cpu->ia0.us = 0; cpu->ia1.us = 0;
-    cpu->ia2.us = 0; cpu->ia3.us = 0;
-    cpu->irv.us = 0;
-    // zero out all of the floating point registers
-    cpu->fa0 = 0; cpu->fa1 = 0;
-    cpu->fa2 = 0; cpu->fa3 = 0;
-    cpu->frv = 0;
-}
-
-
-// obtain the value from an integer register
-// can be used by functions that need to access the register values but not change them
-unsigned short cpucore_getiregv(cpucore_t *cpu, cpucore_iregs_t ireg) {
-    switch (ireg) {
-        case rpc:
-            return cpu->rpc;
-            break;
-        case rsp:
-            return cpu->rsp;
-            break;
-        case rbp:
-            return cpu->rbp;
-            break;
-        case ia0:
-            return cpu->ia0.us;
-            break;
-        case ia1:
-            return cpu->ia1.us;
-            break;
-        case ia2:
-            return cpu->ia2.us;
-            break;
-        case ia3:
-            return cpu->ia3.us;
-            break;
-        case irv:
-            return cpu->irv.us;
-            break;
+// Get the value of an integer register.
+uint16_t get_ireg_val(core_t *core, ireg_t reg) {
+    switch (reg) {
+        case RPC:
+            return core->rpc;
+        case RSP:
+            return core->rsp;
+        case RBP:
+            return core->rbp;
+        case IR0:
+            return core->ir0;
+        case IR1:
+            return core->ir1;
+        case IR2:
+            return core->ir2;
+        case IR3:
+            return core->ir3;
+        case IRV:
+            return core->irv;
         default:
-            // set the error code
-            cpu->stc = ERR_UNREC_IREG;
-            return 0;
+            // ERROR -- register unrecognized
+            core->stc = ERR_REGUNREC;
+            break;
     }
 }
 
 
-// obtain the value from a floating point register
-// can be used by functions that need to access the register values but not change them
-float cpucore_getfregv(cpucore_t *cpu, cpucore_fregs_t freg) {
-    switch (freg) {
-        case fa0:
-            return cpu->fa0;
-        case fa1:
-            return cpu->fa1;
-        case fa2:
-            return cpu->fa2;
-        case fa3:
-            return cpu->fa3;
-        case frv:
-            return cpu->frv;
+/* There are different functions for setting register values based on which 
+   registers are allowed to be set.
+   _gpr = general purpose integer registers or return value register
+   _gp  = general purpose integer registers */ 
+
+// Set the value of an integer register (general purpose integer register).
+void set_ireg_val_gp(core_t *core, ireg_t reg, uint16_t val) {
+    switch (reg) {
+        case RPC:
+        case RSP:
+        case RBP:
+        case IRV:
+            // ERROR -- register not allowed
+            core->stc = ERR_REGNOTALWD;
+            break;
+        case IR0:
+            core->ir0 = val;
+            break;
+        case IR1:
+            core->ir1 = val;
+            break;
+        case IR2:
+            core->ir2 = val;
+            break;
+        case IR3:
+            core->ir3 = val;
+            break;
         default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
-            return 0;
+            // ERROR -- register unrecognized
+            core->stc = ERR_REGUNREC;
+            break;
+    }
+}
+
+// Set the value of an integer register (general purpose integer register
+// or return value register).
+void set_ireg_val_gpr(core_t *core, ireg_t reg, uint16_t val) {
+    switch (reg) {
+        case RPC:
+            core->rpc = val;
+            break;
+        case RBP:
+            core->rbp = val;
+            break;
+        case RSP:
+            // ERROR -- register not allowed
+            core->stc = ERR_REGNOTALWD;
+            break;
+        case IR0:
+            core->ir0 = val;
+            break;
+        case IR1:
+            core->ir1 = val;
+            break;
+        case IR2:
+            core->ir2 = val;
+            break;
+        case IR3:
+            core->ir3 = val;
+            break;
+        case IRV:
+            core->irv = val;
+            break;
+        default:
+            // ERROR -- register unrecognized
+            core->stc = ERR_REGUNREC;
+            break;
     }
 }
 
 
-/* STACK INSTRUCTIONS */
+// Get the value of a float register.
+float get_freg_val(core_t *core, freg_t reg) {
+    switch (reg) {
+        case FR0:
+            return core->fr0;
+        case FR1:
+            return core->fr1;
+        case FR2:
+            return core->fr2;
+        case FR3:
+            return core->fr3;
+        case FRV:
+            return core->frv;
+        default:
+            // ERROR -- register unrecognized
+            core->stc = ERR_REGUNREC;
+            break;
+    }
+}
 
-// push an integer value onto the stack from integer register, decrement stack
-// pointer by the size of the integer value 
-void cpucore_ipush(cpucore_t *cpu, sysmem_t *sysmem, cpucore_iregs_t ireg) {
-    // decrement the stack pointer by 2 bytes
-    cpu->rsp -= 0x2;
-    if (ireg == rsp) {
-        // this is an error, cannot push the stack pointer on the stack
-        cpu->stc = ERR_IPUSH_RSP;
-        // increment the stack pointer by 2 bytes (restore to previous position)
-        cpu->rsp += 0x2;
+
+void set_freg_val(core_t *core, freg_t reg, float val) {
+    switch (reg) {
+        case FR0:
+            core->fr0 = val;
+            break;
+        case FR1:
+            core->fr1 = val;
+            break;
+        case FR2:
+            core->fr2 = val;
+            break;
+        case FR3:
+            core->fr3 = val;
+            break;
+        case FRV:
+            core->frv = val;
+            break;
+        default:
+            // ERROR -- register unrecognized
+            core->stc = ERR_REGUNREC;
+            break;
+    }
+}
+
+
+// No operation.
+void _core_noop(core_t *core) { /* no operation */ }
+
+
+// Halt execution.
+void _core_halt(core_t *core) { 
+    // intentionally set an error to stop execution
+    core->stc = ERR_HALT;
+}
+
+
+// Compare two integer registers and store the result in the rcmp register.
+void _core_cmpi(core_t *core, ireg_t reg_a, ireg_t reg_b) {
+    uint16_t val_a = get_ireg_val(core, reg_a);
+    uint16_t val_b = get_ireg_val(core, reg_b);
+    if (val_a == val_b) {
+        core->rcmp = EQ;
+    } else if (val_a < val_b) {
+        core->rcmp = LT;
     } else {
-        cpu->stc = sysmem_iwrite(sysmem, cpu->rsp, cpucore_getiregv(cpu, ireg));
+        core->rcmp = GT;
     }
 }
 
-// pop an integer value from the stack into the integer register destination, 
-// increment stack pointer
-void cpucore_ipop(cpucore_t *cpu, sysmem_t *sysmem, cpucore_iregs_t ireg) {
-    switch (ireg) {
-        case rsp:
-            // this is an error, cannot push the stack pointer on the stack
-            cpu->stc = ERR_IPOP_RSP;
-            // decrement the stack pointer by 2 bytes (so that it ends up in 
-            // the same place after it gets incremented later
-            cpu->rsp -= 0x2;
+
+// Set an integer register to an immediate value (general purpose integer
+// registers).
+void _core_seti(core_t *core, ireg_t reg, uint16_t val) {
+    set_ireg_val_gp(core, reg, val);
+}
+
+
+// Move a value from one integer register to another (general purpose integer
+// registers or return value register) 
+void _core_movi(core_t *core, ireg_t src, ireg_t dst) {
+    set_ireg_val_gpr(core, dst, get_ireg_val(core, src));
+}
+
+
+// Move a value from register src to register dst if the value in rcmp is EQ. 
+// Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_meqi(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
             break;
-        case rpc:
-            cpu->stc = sysmem_iread(sysmem, &cpu->rpc, cpu->rsp);
-            break;
-        case rbp:
-            cpu->stc = sysmem_iread(sysmem, &cpu->rbp, cpu->rsp);
-            break;
-        case ia0:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia0.us, cpu->rsp);
-            break;
-        case ia1:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia1.us, cpu->rsp);
-            break;
-        case ia2:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia2.us, cpu->rsp);
-            break;
-        case ia3:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia3.us, cpu->rsp);
-            break;
-        case irv:
-            cpu->stc = sysmem_iread(sysmem, &cpu->irv.us, cpu->rsp);
+        case EQ:
+            _core_movi(core, src, dst);
             break;
         default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            // decrement the stack pointer by 2 bytes (so that it ends up in 
-            // the same place after it gets incremented later
-            cpu->rsp -= 0x2;
-            break;  
+            // do nothing
+            break;
     }
-    // increment the stack pointer by 2 bytes
-    cpu->rsp += 0x2;
+    // reset rcmp
+    core->rcmp = NA;
 }
 
-// push an integer value onto the stack from integer register, decrement stack
-// pointer by the size of the integer value 
-void cpucore_fpush(cpucore_t *cpu, sysmem_t *sysmem, cpucore_fregs_t freg) {
-    // decrement the stack pointer by 4 bytes
-    cpu->rsp -= 0x4;
-    cpu->stc = sysmem_fwrite(sysmem, cpu->rsp, cpucore_getfregv(cpu, freg));
-}
 
-// pop a float value from the stack into the float register destination, 
-// increment stack pointer
-void cpucore_fpop(cpucore_t *cpu, sysmem_t *sysmem, cpucore_fregs_t freg) {
-    switch (freg) {
-        case fa0:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa0, cpu->rsp);
+// Move a value from register src to register dst if the value in rcmp is 
+// GT or LT. Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_mnei(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
             break;
-        case fa1:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa1, cpu->rsp);
-            break;
-        case fa2:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa2, cpu->rsp);
-            break;
-        case fa3:
-            cpu->stc = sysmem_fread(sysmem, &cpu->fa3, cpu->rsp);
-            break;
-        case frv:
-            cpu->stc = sysmem_fread(sysmem, &cpu->frv, cpu->rsp);
+        case LT:
+        case GT:
+            _core_movi(core, src, dst);
             break;
         default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_FREG;
-            // decrement the stack pointer by 4 bytes (so that it ends up in 
-            // the same place after it gets incremented later
-            cpu->rsp -= 0x4;
-            break;  
+            // do nothing
+            break;
     }
-    // increment the stack pointer by 4 bytes
-    cpu->rsp += 0x4;
+    // reset rcmp
+    core->rcmp = NA;
 }
 
 
-/* MEMORY ACCESS INSTRUCTIONS */
-
-// reads an integer value from a memory location into an integer register
-void cpucore_irdmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_iregs_t ireg, memaddr_t addr) {
-    switch (ireg) {
-        case rpc:
-            cpu->stc = sysmem_iread(sysmem, &cpu->rpc, addr);
+// Move a value from register src to register dst if the value in rcmp is 
+// GT or EQ. Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_mgei(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
             break;
-        case rsp:
-            cpu->stc = sysmem_iread(sysmem, &cpu->rsp, addr);
-            break;
-        case rbp:
-            cpu->stc = sysmem_iread(sysmem, &cpu->rbp, addr);
-            break;
-        case ia0:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia0.us, addr);
-            break;
-        case ia1:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia1.us, addr);
-            break;
-        case ia2:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia2.us, addr);
-            break;
-        case ia3:
-            cpu->stc = sysmem_iread(sysmem, &cpu->ia3.us, addr);
-            break;
-        case irv:
-            cpu->stc = sysmem_iread(sysmem, &cpu->irv.us, addr);
+        case EQ:
+        case GT:
+            _core_movi(core, src, dst);
             break;
         default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;  
+            // do nothing
+            break;
     }
+    // reset rcmp
+    core->rcmp = NA;
 }
 
-// writes an integer value to a memory location from an integer register
-void cpucore_iwtmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_iregs_t ireg, memaddr_t addr) {
-    sysmem_iwrite(sysmem, addr, cpucore_getiregv(cpu, ireg));
-}
 
-// reads a float value from a memory location into a floatregister
-void cpucore_frdmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_fregs_t freg, memaddr_t addr) {
-    switch (freg) {
-        case fa0:
-            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa0, addr);
+// Move a value from register src to register dst if the value in rcmp is 
+// GT. Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_mgti(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
             break;
-        case fa1:
-            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa1, addr);
-            break;
-        case fa2:
-            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa2, addr);
-            break;
-        case fa3:
-            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->fa3, addr);
-            break;
-        case frv:
-            cpu->stc = sysmem_fread(sysmem, (float*) &cpu->frv, addr);
+        case GT:
+            _core_movi(core, src, dst);
             break;
         default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_FREG;
-            break;  
+            // do nothing
+            break;
     }
-}
-
-// writes a float value to a memory location from a float register
-void cpucore_fwtmem(cpucore_t *cpu, sysmem_t *sysmem, cpucore_fregs_t freg, memaddr_t addr) {
-    sysmem_fwrite(sysmem, addr, cpucore_getfregv(cpu, freg));
+    // reset rcmp
+    core->rcmp = NA;
 }
 
 
-/* JUMP INSTRUCTIONS */
+// Move a value from register src to register dst if the value in rcmp is 
+// LT or EQ. Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_mlei(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
+            break;
+        case EQ:
+        case LT:
+            _core_movi(core, src, dst);
+            break;
+        default:
+            // do nothing
+            break;
+    }
+    // reset rcmp
+    core->rcmp = NA;
+}
 
-// unconditional jump
-void cpucore_jmp(cpucore_t *cpu, memaddr_t addr) {
-    // check the address
-    // other memory address bounds checking could be done here as well
-    if (addr > SYSMEM_MAX_ADDR) {
-        cpu->stc = ERR_SMEM_MAXADR;
+
+// Move a value from register src to register dst if the value in rcmp is 
+// LT. Must follow a cmpi instruction. 
+// Regardless of whether the move is performed or not, rcmp is set to NA at the
+// end since the comparison may no longer be valid.
+void _core_mlti(core_t *core, ireg_t src, ireg_t dst) {
+    switch (core->rcmp) {
+        case NA:
+            // ERROR -- conditional operation with uninitialized rcmp
+            core->stc = ERR_RCMPNOTINIT;
+            break;
+        case LT:
+            _core_movi(core, src, dst);
+            break;
+        default:
+            // do nothing
+            break;
+    }
+    // reset rcmp
+    core->rcmp = NA;
+}
+
+
+// Push a value onto the stack (general purpose integer registers or return
+// value register). Stack grows toward increasing addresses.
+void _core_pshi(core_t *core, ireg_t reg) {
+    if (core->rsp >= MEMORY_MAXADDR - 2) {
+        // ERROR -- stack overflow
+        core->stc = ERR_STACKOVERFLOW;
     } else {
-        cpu->rpc = addr;
-    }
-}
-
-// jump if two integer registers are equal
-void cpucore_ijeq(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, memaddr_t addr) {
-    if (ireg1 == ireg2) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg1) == cpucore_getiregv(cpu, ireg2)) {
-        // jump if the values at the two registers are equal
-        cpucore_jmp(cpu, addr);
-    }
-}
-
-// jump if integer register 1 > integer register 2
-void cpucore_ijgt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, memaddr_t addr) {
-    if (ireg1 == ireg2) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg1) > cpucore_getiregv(cpu, ireg2)) {
-        // jump if reg1 > reg2
-        cpucore_jmp(cpu, addr);
-    }
-}
-
-// jump if integer register 1 >= integer register 2
-void cpucore_ijge(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, memaddr_t addr) {
-    if (ireg1 == ireg2) {    
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg1) >= cpucore_getiregv(cpu, ireg2)) {
-        // jump if reg1 >= reg2
-        cpucore_jmp(cpu, addr);
-    }
-}
-
-// jump if integer register 1 < integer register 2
-void cpucore_ijlt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, memaddr_t addr) {
-    if (ireg1 == ireg2) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg1) < cpucore_getiregv(cpu, ireg2)) {
-        // jump if reg1 < reg2
-        cpucore_jmp(cpu, addr);
-    }
-}
-
-// jump if integer register 1 <= integer register 2
-void cpucore_ijle(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, memaddr_t addr) {
-    if (ireg1 == ireg2) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg1) <= cpucore_getiregv(cpu, ireg2)) {
-        // jump if reg1 <= reg2
-        cpucore_jmp(cpu, addr);
+        core->smem->set_uint16(core->smem, core->rsp, get_ireg_val(core, reg));
+        // increment the stack pointer
+        core->rsp += 2;
     }
 }
 
 
-/* BINARY ARITHMETIC INSTRUCTIONS */
-
-// perform bitwise and operation
-// computes i1 & i2 and stores the result in i1
-void cpucore_and(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    unsigned short and =  cpucore_getiregv(cpu, ireg1) & cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = and;
-            break;
-        case ia1:
-            cpu->ia1.us = and;
-            break;
-        case ia2:
-            cpu->ia2.us = and;
-            break;
-        case ia3:
-            cpu->ia3.us = and;
-            break;
-        case irv:
-            cpu->irv.us = and;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// perform bitwise or operation
-// computes i1 | i2 and stores the result in i1
-void cpucore_or(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    unsigned short or =  cpucore_getiregv(cpu, ireg1) | cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = or;
-            break;
-        case ia1:
-            cpu->ia1.us = or;
-            break;
-        case ia2:
-            cpu->ia2.us = or;
-            break;
-        case ia3:
-            cpu->ia3.us = or;
-            break;
-        case irv:
-            cpu->irv.us = or;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// perform bitwise xor operation
-// computes i1 ^ i2 and stores the result in i1
-void cpucore_xor(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    unsigned short xor =  cpucore_getiregv(cpu, ireg1) ^ cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = xor;
-            break;
-        case ia1:
-            cpu->ia1.us = xor;
-            break;
-        case ia2:
-            cpu->ia2.us = xor;
-            break;
-        case ia3:
-            cpu->ia3.us = xor;
-            break;
-        case irv:
-            cpu->irv.us = xor;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// perform bitwise not operation
-// computes ~i and stores the result in i
-void cpucore_not(cpucore_t *cpu, cpucore_iregs_t ireg) {
-    unsigned short not =  ~cpucore_getiregv(cpu, ireg);
-    switch (ireg) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = not;
-            break;
-        case ia1:
-            cpu->ia1.us = not;
-            break;
-        case ia2:
-            cpu->ia2.us = not;
-            break;
-        case ia3:
-            cpu->ia3.us = not;
-            break;
-        case irv:
-            cpu->irv.us = not;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// perform a bitwise right shift by specified offset
-void cpucore_rshift(cpucore_t *cpu, cpucore_iregs_t ireg, unsigned char offset) {
-    unsigned short shift =  cpucore_getiregv(cpu, ireg) >> offset;
-    switch (ireg) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = shift;
-            break;
-        case ia1:
-            cpu->ia1.us = shift;
-            break;
-        case ia2:
-            cpu->ia2.us = shift;
-            break;
-        case ia3:
-            cpu->ia3.us = shift;
-            break;
-        case irv:
-            cpu->irv.us = shift;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// perform a bitwise left shift by specified offset
-void cpucore_lshift(cpucore_t *cpu, cpucore_iregs_t ireg, unsigned char offset) {
-    unsigned short shift =  cpucore_getiregv(cpu, ireg) << offset;
-    switch (ireg) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to and into
-            cpu->stc = ERR_BIN_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = shift;
-            break;
-        case ia1:
-            cpu->ia1.us = shift;
-            break;
-        case ia2:
-            cpu->ia2.us = shift;
-            break;
-        case ia3:
-            cpu->ia3.us = shift;
-            break;
-        case irv:
-            cpu->irv.us = shift;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
+// Pop a value off of the stack (general purpose integer registers or return
+// value register).
+void _core_popi(core_t *core, ireg_t reg) {
+    if (core->rsp <= MEMORY_RWBLKMAX) {
+        // ERROR -- stack underflow
+        core->stc = ERR_STACKUNDERFLOW;
+    } else {
+        // decrement the stack pointer
+        core->rsp -= 2;
+        set_ireg_val_gpr(core, reg, core->smem->get_uint16(core->smem, core->rsp));
     }
 }
 
 
-/* INTEGER ARITHMETIC INSTRUCTIONS */
-
-/* 
-    NOTE: all integer arithmetic is implemented with unsigned short values, 
-          I will need to take a look later and see if this still works with
-          signed shorts and (un)signed chars and if necessary adjust the 
-          implementations accordingly
-*/
-
-// add an integer register into another
-// add i1 + i2 and store the result in i1
-void cpucore_iadd(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    // detect overflow and set the status code
-    // cast values to ints to do the addition see if result is greater than
-    // unsigned short max (0xFFFF)
-    unsigned int sum = (unsigned int) cpucore_getiregv(cpu, ireg1) + 
-                       (unsigned int) cpucore_getiregv(cpu, ireg2);
-    if (sum > 0xFFFF) {
-        cpu->stc = ERR_IADD_OVRFLW;
-        // set the value to 0xFFFF
-        sum = 0xFFFF;
-    }
-    switch (ireg1) {
-        case rpc:
-            // rpc is not allowed to add into
-            cpu->stc = ERR_IADD_REGNOTALWD;
-            break;
-        case rsp:
-            cpu->rsp = (unsigned short) sum;
-            break;
-        case rbp:
-            cpu->rbp = (unsigned short) sum;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = (unsigned short) sum;
-            break;
-        case ia1:
-            cpu->ia1.us = (unsigned short) sum;
-            break;
-        case ia2:
-            cpu->ia2.us = (unsigned short) sum;
-            break;
-        case ia3:
-            cpu->ia3.us = (unsigned short) sum;
-            break;
-        case irv:
-            cpu->irv.us = (unsigned short) sum;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// subtract an integer register from another 
-// add i1 - i2 and store the result in i1
-void cpucore_isub(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    // detect underflow and set the status code
-    unsigned short dif = cpucore_getiregv(cpu, ireg1) - cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-            // rpc is not allowed to add into
-            cpu->stc = ERR_ISUB_REGNOTALWD;
-            break;
-        case rsp:
-            cpu->rsp = (unsigned short) dif;
-            break;
-        case rbp:
-            cpu->rbp = (unsigned short) dif;
-            break;
-        // the difference was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = dif;
-            break;
-        case ia1:
-            cpu->ia1.us = dif;
-            break;
-        case ia2:
-            cpu->ia2.us = dif;
-            break;
-        case ia3:
-            cpu->ia3.us = dif;
-            break;
-        case irv:
-            cpu->irv.us = dif;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// multiply an integer register into another
-// multiply i1 * i2 and store the result in i1
-void cpucore_imul(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    // detect overflow and set the status code
-    // cast values to ints to do the addition see if result is greater than
-    // unsigned short max (0xFFFF)
-    unsigned int prod = (unsigned int) cpucore_getiregv(cpu, ireg1) * 
-                       (unsigned int) cpucore_getiregv(cpu, ireg2);
-    if (prod > 0xFFFF) {
-        cpu->stc = ERR_IMUL_OVRFLW;
-        // set the value to 0xFFFF
-        prod = 0xFFFF;
-    }
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to add into
-            cpu->stc = ERR_IADD_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = (unsigned short) prod;
-            break;
-        case ia1:
-            cpu->ia1.us = (unsigned short) prod;
-            break;
-        case ia2:
-            cpu->ia2.us = (unsigned short) prod;
-            break;
-        case ia3:
-            cpu->ia3.us = (unsigned short) prod;
-            break;
-        case irv:
-            cpu->irv.us = (unsigned short) prod;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// divide an integer register into another 
-// divide i1 / i2 and store the result in i1
-void cpucore_idiv(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    unsigned short quot = cpucore_getiregv(cpu, ireg1) / cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to add into
-            cpu->stc = ERR_IDIV_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = quot;
-            break;
-        case ia1:
-            cpu->ia1.us = quot;
-            break;
-        case ia2:
-            cpu->ia2.us = quot;
-            break;
-        case ia3:
-            cpu->ia3.us = quot;
-            break;
-        case irv:
-            cpu->irv.us = quot;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// calculate the modulus of one register divided into another 
-// mod i1 % i2 and store the result in i1
-void cpucore_imod(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2) {
-    unsigned short mod = cpucore_getiregv(cpu, ireg1) % cpucore_getiregv(cpu, ireg2);
-    switch (ireg1) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to add into
-            cpu->stc = ERR_IMOD_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = mod;
-            break;
-        case ia1:
-            cpu->ia1.us = mod;
-            break;
-        case ia2:
-            cpu->ia2.us = mod;
-            break;
-        case ia3:
-            cpu->ia3.us = mod;
-            break;
-        case irv:
-            cpu->irv.us = mod;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
+// Load an integer value from memory into an integer register (general purpose 
+// integer registers or return value register).
+void _core_lodi(core_t *core, uint16_t addr, ireg_t reg) {
+    // memory address bounds checking
+    if (addr < MEMORY_RWBLKMIN || addr > MEMORY_RWBLKMAX - 2) {
+        // ERROR -- memory access out of read/write block
+        core->stc = ERR_MEMACCRWBLK;
+    } else {
+        set_ireg_val_gpr(core, reg, core->smem->get_uint16(core->smem, addr));
     }
 }
 
 
-/* FLOATING POINT ARITHMETIC INSTRUCTIONS */
-
-// add a floating point register into another
-// add i1 + i2 and store the result in i1
-void cpucore_fadd(cpucore_t *cpu, cpucore_fregs_t freg1, cpucore_fregs_t freg2) {
-    // no overflow checking (yet?) 
-    float f2 = cpucore_getfregv(cpu, freg2);
-    switch (freg1) {
-        case fa0:
-            cpu->fa0 += f2;
-            break;
-        case fa1:
-            cpu->fa1 += f2;
-            break;
-        case fa2:
-            cpu->fa2 += f2;
-            break;
-        case fa3:
-            cpu->fa3 += f2;
-            break;
-        case frv:
-            cpu->frv += f2;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
-    }
-}
-
-// subtract a floating point register from another 
-// add i1 - i2 and store the result in i1
-void cpucore_fsub(cpucore_t *cpu, cpucore_fregs_t freg1, cpucore_fregs_t freg2) {
-    float f2 = cpucore_getfregv(cpu, freg2);
-    switch (freg1) {
-        case fa0:
-            cpu->fa0 -= f2;
-            break;
-        case fa1:
-            cpu->fa1 -= f2;
-            break;
-        case fa2:
-            cpu->fa2 -= f2;
-            break;
-        case fa3:
-            cpu->fa3 -= f2;
-            break;
-        case frv:
-            cpu->frv -= f2;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
-    }
-}
-
-// multiply a floating point register into another
-// multiply i1 * i2 and store the result in i1
-void cpucore_fmul(cpucore_t *cpu, cpucore_fregs_t freg1, cpucore_fregs_t freg2) {
-    // no overflow checking (yet?)
-    float f2 = cpucore_getfregv(cpu, freg2);
-    switch (freg1) {
-        case fa0:
-            cpu->fa0 *= f2;
-            break;
-        case fa1:
-            cpu->fa1 *= f2;
-            break;
-        case fa2:
-            cpu->fa2 *= f2;
-            break;
-        case fa3:
-            cpu->fa3 *= f2;
-            break;
-        case frv:
-            cpu->frv *= f2;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
-    }
-}
-
-// divide a floating point register into another 
-// divide i1 / i2 and store the result in i1
-void cpucore_fdiv(cpucore_t *cpu, cpucore_fregs_t freg1, cpucore_fregs_t freg2) {
-    float f2 = cpucore_getfregv(cpu, freg2);
-    switch (freg1) {
-        case fa0:
-            cpu->fa0 /= f2;
-            break;
-        case fa1:
-            cpu->fa1 /= f2;
-            break;
-        case fa2:
-            cpu->fa2 /= f2;
-            break;
-        case fa3:
-            cpu->fa3 /= f2;
-            break;
-        case frv:
-            cpu->frv /= f2;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
+// Store an integer value from an integer register in memory (general purpose 
+// integer registers or return value register)
+void _core_stoi(core_t *core, ireg_t reg, uint16_t addr) {
+    // memory address bounds checking
+    if (addr < MEMORY_RWBLKMIN || addr > MEMORY_RWBLKMAX - 2) {
+        // ERROR -- memory access out of read/write block
+        core->stc = ERR_MEMACCRWBLK;
+    } else {
+        core->smem->set_uint16(core->smem, addr, get_ireg_val(core, reg));
     }
 }
 
 
-/* CALL/RETURN INSTRUCTIONS */
-
-// call
-// push callee-saved registers onto stack
-// push current execution address onto stack
-// jump to new execution address
-void cpucore_call(cpucore_t *cpu, sysmem_t *sysmem, memaddr_t addr) {
-    // push all callee-saved registers onto stack
-    cpucore_ipush(cpu, sysmem, rbp);
-    cpucore_ipush(cpu, sysmem, ia0);
-    cpucore_ipush(cpu, sysmem, ia1);
-    cpucore_ipush(cpu, sysmem, ia2);
-    cpucore_ipush(cpu, sysmem, ia3);
-    cpucore_fpush(cpu, sysmem, fa0);
-    cpucore_fpush(cpu, sysmem, fa1);
-    cpucore_fpush(cpu, sysmem, fa2);
-    cpucore_fpush(cpu, sysmem, fa3);
-    // push current program counter address onto stack
-    cpucore_ipush(cpu, sysmem, rpc);
-    // jump to the new address
-    cpucore_jmp(cpu, addr);
-}
-
-// ret
-// pop execution address off of stack
-// jump to execution address
-// pop callee-saved registers off of stack
-void cpucore_ret(cpucore_t *cpu, sysmem_t *sysmem) {
-    // pop the old execution address off of the stack into the 
-    // program counter (effectively jumping back to pre-call position)
-    cpucore_ipop(cpu, sysmem, rpc);
-    // pop all of the callee-saved registers back into place (in reverse order
-    // from when they were pushed on to the stack)
-    cpucore_fpop(cpu, sysmem, fa3);
-    cpucore_fpop(cpu, sysmem, fa2);
-    cpucore_fpop(cpu, sysmem, fa1);
-    cpucore_fpop(cpu, sysmem, fa0);
-    cpucore_ipop(cpu, sysmem, ia3);
-    cpucore_ipop(cpu, sysmem, ia2);
-    cpucore_ipop(cpu, sysmem, ia1);
-    cpucore_ipop(cpu, sysmem, ia0);
-    cpucore_ipop(cpu, sysmem, rbp);
-}
-
-
-/* IMMEDIATE VALUE INSTRUCTIONS */
-
-// set integer register to immediate value
-void cpucore_isetr(cpucore_t *cpu, cpucore_iregs_t ireg, unsigned short value) {
-    switch (ireg) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to assign immediate value into
-            cpu->stc = ERR_IIMM_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = value;
-            break;
-        case ia1:
-            cpu->ia1.us = value;
-            break;
-        case ia2:
-            cpu->ia2.us = value;
-            break;
-        case ia3:
-            cpu->ia3.us = value;
-            break;
-        case irv:
-            cpu->irv.us = value;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
-    }
-}
-
-// set floating point register to immediate value
-void cpucore_fsetr(cpucore_t *cpu, cpucore_fregs_t freg, float value) {
-    switch (freg) {
-        case fa0:
-            cpu->fa0 = value;
-            break;
-        case fa1:
-            cpu->fa1 = value;
-            break;
-        case fa2:
-            cpu->fa2 = value;
-            break;
-        case fa3:
-            cpu->fa3 = value;
-            break;
-        case frv:
-            cpu->frv = value;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
+// Compute address using a base address, offset and multiplier (1 or 2),
+// storing the result in an integer register.
+void _core_leai (core_t *core, ireg_t base, ireg_t off, uint8_t mult, ireg_t dest) {
+    uint16_t base_v, off_v;
+    base_v = get_ireg_val(core, base);
+    off_v = get_ireg_val(core, off);
+    // multiplier must be 1 or 2 (or 0)
+    if (mult > 2) {
+        // ERROR -- leai mult > 2
+        core->stc = ERR_LEAIMULTGT2;
+    } else {
+        set_ireg_val_gpr(core, dest, base_v + (off_v << mult));
     }
 }
 
 
-/* MOVE INSTRUCTIONS */
-
-// move integer value from r1 into r2 
-void cpucore_imov(cpucore_t *cpu, cpucore_iregs_t r1, cpucore_iregs_t r2) {
-    unsigned short value = cpucore_getiregv(cpu, r1);
-    switch (r2) {
-        case rpc:
-        case rsp:
-        case rbp:
-            // these registers are not allowed to assign immediate value into
-            cpu->stc = ERR_IMOV_REGNOTALWD;
-            break;
-        // the sum was already computed before, so just cast to short and set the 
-        // value of the destination register to that
-        case ia0:
-            cpu->ia0.us = value;
-            break;
-        case ia1:
-            cpu->ia1.us = value;
-            break;
-        case ia2:
-            cpu->ia2.us = value;
-            break;
-        case ia3:
-            cpu->ia3.us = value;
-            break;
-        case irv:
-            cpu->irv.us = value;
-            break;
-        default:
-            // unrecognized value, error
-            cpu->stc = ERR_UNREC_IREG;
-            break;
+// Push a value onto the stack (general purpose float registers or return
+// value register). Stack grows toward increasing addresses.
+void _core_pshf(core_t *core, freg_t reg) {
+    if (core->rsp >= MEMORY_MAXADDR - 4) {
+        // ERROR -- stack overflow
+        core->stc = ERR_STACKOVERFLOW;
+    } else {
+        core->smem->set_float(core->smem, core->rsp, get_freg_val(core, reg));
+        // increment the stack pointer
+        core->rsp += 4;
     }
 }
 
-// move floating point value from r1 into r2 
-void cpucore_fmov(cpucore_t *cpu, cpucore_fregs_t r1, cpucore_fregs_t r2) {
-    float value = cpucore_getfregv(cpu, r1);
-    switch (r2) {
-        case fa0:
-            cpu->fa0 = value;
-            break;
-        case fa1:
-            cpu->fa1 = value;
-            break;
-        case fa2:
-            cpu->fa2 = value;
-            break;
-        case fa3:
-            cpu->fa3 = value;
-            break;
-        case frv:
-            cpu->frv = value;
-            break;
-        default:
-            // set the error code
-            cpu->stc = ERR_UNREC_FREG;
+
+// Pop a value off of the stack (general purpose float registers or return
+// value register).
+void _core_popf(core_t *core, freg_t reg) {
+    if (core->rsp <= MEMORY_RWBLKMAX) {
+        // ERROR -- stack underflow
+        core->stc = ERR_STACKUNDERFLOW;
+    } else {
+        // decrement the stack pointer
+        core->rsp -= 4;
+        set_freg_val(core, reg, core->smem->get_float(core->smem, core->rsp));
     }
 }
 
-// integer move r1 into r2 if r3 == r4
-void cpucore_imveq(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) == cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
+
+// Execute a subroutine starting at a memory address. Preserve general purpose
+// register values but not the return value registers.
+void _core_call(core_t *core, uint16_t addr) {
+    // preserve program counter, base pointer, and all general purpose registers
+    // push rpc, rbp, ir0-ir3, fr0-fr3 to stack in that order
+    _core_pshi(core, RPC);
+    _core_pshi(core, RBP);
+    _core_pshi(core, IR0);
+    _core_pshi(core, IR1);
+    _core_pshi(core, IR2);
+    _core_pshi(core, IR3);
+    _core_pshf(core, FR0);
+    _core_pshf(core, FR1);
+    _core_pshf(core, FR2);
+    _core_pshf(core, FR3);
+    // set the program counter to the subroutine address
+    if (addr > MEMORY_RWBLKMIN) {
+        // if the address is outside the read-only block that is an error
+        core->stc = ERR_EXECOUTOFROBLK;
+    } else {
+        core->rpc = addr;
     }
 }
 
-// integer move r1 into r2 if r3 != r4
-void cpucore_imvne(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) != cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
+
+void _core_retn(core_t *core) {
+    // restore registers in reverse order
+    _core_popf(core, FR3);
+    _core_popf(core, FR2);
+    _core_popf(core, FR1);
+    _core_popf(core, FR0);
+    _core_popi(core, IR3);
+    _core_popi(core, IR2);
+    _core_popi(core, IR1);
+    _core_popi(core, IR0);
+    _core_popi(core, RBP);
+    _core_popi(core, RPC);
+
+}
+
+
+// Set a floating point register to an immediate value.
+void _core_setf(core_t *core, freg_t reg, float val) {
+    set_freg_val(core, reg, val);
+}
+
+
+// Move a floating point value from one register to another.
+void _core_movf(core_t *core, freg_t src, freg_t dst) {
+    set_freg_val(core, dst, get_freg_val(core, src));
+}
+
+
+// Load a floating point value from a memory address into a float register.
+void _core_lodf(core_t *core, uint16_t addr, freg_t reg) {
+    set_freg_val(core, reg, core->smem->get_float(core->smem, addr));
+}
+
+
+// Store a floating point value from a float register at an address in memory
+void _core_stof(core_t *core, freg_t reg, uint16_t addr) {
+    core->smem->set_float(core->smem, addr, get_freg_val(core, reg));
+}
+
+
+// Increment an integer register 
+void _core_inci(core_t *core, ireg_t reg) {
+    set_ireg_val_gpr(core, reg, get_ireg_val(core, reg) + 1);
+}
+
+
+// Decrement an integer register 
+void _core_deci(core_t *core, ireg_t reg) {
+    uint16_t val = get_ireg_val(core, reg);
+    if (val == 0) {
+        // ERROR: decrement 0
+        core->stc = ERR_DECRZERO;
+    } else { 
+        set_ireg_val_gpr(core, reg, val - 1);
     }
 }
 
-// integer move r1 into r2 if r3 < r4
-void cpucore_imvlt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) < cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
+
+// add an int register A into another B (store result in B)
+void _core_addi(core_t *core, ireg_t rega, ireg_t regb) {
+    uint16_t a = get_ireg_val(core, rega);
+    uint16_t b = get_ireg_val(core, regb);
+    uint16_t max = a > b ? a : b;
+    uint16_t sum =  a + b;
+    if (sum < max) {
+        // ERROR: integer register overflow
+        core->stc = ERR_IREGOVERFLOW;
+    } else {
+        set_ireg_val_gpr(core, regb, sum);
     }
 }
 
-// integer move r1 into r2 if r3 <= r4
-void cpucore_imvle(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) <= cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
+
+// subtract an int register A from another B (store result in B)
+void _core_subi(core_t *core, ireg_t rega, ireg_t regb) {
+    uint16_t a = get_ireg_val(core, rega);
+    uint16_t b = get_ireg_val(core, regb);
+    uint16_t diff = b - a;
+    if (diff > b) {
+        // ERROR: integer register underflow
+        core->stc = ERR_IREGUNDERFLOW;
+    } else {
+        set_ireg_val_gpr(core, regb, diff);
     }
 }
 
-// integer move r1 into r2 if r3 > r4
-void cpucore_imvgt(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) > cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
-    }
+
+// Add float register A into another B, store result in B
+void _core_addf(core_t *core, freg_t rega, freg_t regb) {
+    float a = get_freg_val(core, rega);
+    float b = get_freg_val(core, regb);
+    set_freg_val(core, regb, a + b);
 }
 
-// integer move r1 into r2 if r3 >= r4
-void cpucore_imvge(cpucore_t *cpu, cpucore_iregs_t ireg1, cpucore_iregs_t ireg2, cpucore_iregs_t ireg3, cpucore_iregs_t ireg4) {
-    if (ireg3 == ireg4) {
-        // cannot compare a register to itself
-        cpu->stc = ERR_IREG_CMPTOSELF;
-    } else if (cpucore_getiregv(cpu, ireg3) >= cpucore_getiregv(cpu, ireg4)) {
-        cpucore_imov(cpu, ireg1, ireg2);
-    }
+
+// subtract float register A from another B, store result in B
+void _core_subf(core_t *core, freg_t rega, freg_t regb) {
+    float a = get_freg_val(core, rega);
+    float b = get_freg_val(core, regb);
+    set_freg_val(core, regb, b - a);
+}
+
+
+// Multiply float register A by another B, store result in B
+void _core_mulf(core_t *core, freg_t rega, freg_t regb) {
+    float a = get_freg_val(core, rega);
+    float b = get_freg_val(core, regb);
+    set_freg_val(core, regb, a * b);
+}
+
+
+// divide float register B by another A, store result in B
+void _core_divf(core_t *core, freg_t rega, freg_t regb) {
+    float a = get_freg_val(core, rega);
+    float b = get_freg_val(core, regb);
+    set_freg_val(core, regb, b / a);
+}
+
+
+// Allocates memory for a new CPU core structure and returns a pointer to it.
+core_t* core_init(uint8_t cid, sysmem_t *smem) {
+    // allocate (zeroed) memory
+    core_t *core = calloc(1, sizeof(core_t));
+    // initialize data structure values
+    core->cid  = cid;
+    core->rsp  = MEMORY_RWBLKMAX; // rsp starts at bottom of stack space
+    core->smem = smem;
+    core->rcmp = NA;
+    core->stc  = NO_ERR;
+    // set all of the function pointers
+    core->noop = &_core_noop;
+    core->halt = &_core_halt;
+    core->cmpi = &_core_cmpi;
+    core->seti = &_core_seti;
+    core->movi = &_core_movi;
+    core->meqi = &_core_meqi;
+    core->mnei = &_core_mnei;
+    core->mgei = &_core_mgei;
+    core->mgti = &_core_mgti;
+    core->mlei = &_core_mlei;
+    core->mlti = &_core_mlti;
+    core->pshi = &_core_pshi;
+    core->popi = &_core_popi;
+    core->lodi = &_core_lodi;
+    core->stoi = &_core_stoi;
+    core->leai = &_core_leai;
+    core->pshf = &_core_pshf;
+    core->popf = &_core_popf;
+    core->call = &_core_call;
+    core->retn = &_core_retn;
+    core->setf = &_core_setf;
+    core->movf = &_core_movf;
+    core->lodf = &_core_lodf;
+    core->stof = &_core_stof;
+    core->inci = &_core_inci;
+    core->deci = &_core_deci;
+    core->addi = &_core_addi;
+    core->subi = &_core_subi;
+    core->addf = &_core_addf;
+    core->subf = &_core_subf;
+    core->mulf = &_core_mulf;
+    core->divf = &_core_divf;
+    return core;
+}
+
+
+// Frees memory associated with CPU core structure to de-initialize.
+void core_delete(core_t *core) {
+    free(core);
+}
+
+
+// Decodes an instruction at a specified memory address and executes it.
+void core_decode(core_t *core, sysmem_t *smem, uint16_t addr, uint8_t bit_offset) {
+    // decode the byte at the specified memory address bit by bit, starting at
+    // the offset 
 }
 

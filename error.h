@@ -1,6 +1,9 @@
 /*
-    A simple Virtual Machine --> try #2
+    C16_VM_v3
     Dylan H. Ross
+    2017/11/24
+    
+    The third (and I pray final) iteration of my toy 16-bit virtual machine.
     
     error.h
 */
@@ -10,30 +13,22 @@
 #define ERROR_H
 
 
-// CPU error codes (unsigned char) start at 0x01
-#define ERR_IPUSH_RSP       0x01
-#define ERR_IPOP_RSP        0x02
-#define ERR_UNREC_IREG      0x03
-#define ERR_UNREC_FREG      0x04
-#define ERR_IREG_CMPTOSELF  0x05
-#define ERR_IADD_OVRFLW     0x06
-#define ERR_IADD_REGNOTALWD 0x07
-#define ERR_ISUB_REGNOTALWD 0x08
-
-#define ERR_IMUL_OVRFLW     0x0A
-#define ERR_IDIV_REGNOTALWD 0x0B
-#define ERR_IMOD_REGNOTALWD 0x0C
-#define ERR_BIN_REGNOTALWD  0x0D
-#define ERR_IIMM_REGNOTALWD 0x0F
-#define ERR_IMOV_REGNOTALWD 0x10
-
-
-// memory error codes (unsigned char) start at 0x41
-#define ERR_SMEM_MAXADR     0x41
-
-
-// instruction error codes (unsigned char) start at 0x51
-#define ERR_UNREC_INSTR     0x51
+// define error codes 
+typedef enum {
+    NO_ERR,             // no error
+    ERR_HALT,           // set by halt instruction
+    ERR_REGUNREC,       // register unrecognized
+    ERR_REGNOTALWD,     // register not allowed
+    ERR_RCMPNOTINIT,    // conditional operation with rcmp not initialized
+    ERR_STACKOVERFLOW,  // stack overflow
+    ERR_STACKUNDERFLOW, // stack underflow
+    ERR_MEMACCRWBLK,    // memory access out of read/write block
+    ERR_LEAIMULTGT2,    // multiplier for leai instuction > 2
+    ERR_EXECOUTOFROBLK, // execute code from outside of RO memory block
+    ERR_DECRZERO,       // decrement 0
+    ERR_IREGOVERFLOW,   // integer register overflow
+    ERR_IREGUNDERFLOW   // integer register underflow
+} errcode_t;
 
 
 #endif

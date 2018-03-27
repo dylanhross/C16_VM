@@ -1,6 +1,6 @@
 /*
     A simple Virtual Machine --> try #2
-    Dylan H. Ross
+    Dylan H. Ross 
     
     cpu.c
 */

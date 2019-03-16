@@ -384,18 +384,18 @@ void _core_stoi(core_t *core, ireg_t reg, uint16_t addr) {
 }
 
 
-// Compute address using a base address, offset and multiplier (1 or 2),
+// Compute address using a base address, offset and multiplier (1, 2, or 4),
 // storing the result in an integer register.
 void _core_leai (core_t *core, ireg_t base, ireg_t off, uint8_t mult, ireg_t dest) {
     uint16_t base_v, off_v;
     base_v = get_ireg_val(core, base);
     off_v = get_ireg_val(core, off);
-    // multiplier must be 1 or 2 (or 0)
-    if (mult > 2) {
-        // ERROR -- leai mult > 2
-        core->stc = ERR_LEAIMULTGT2;
+    // multiplier must be 1, 2, or 4 
+    if ((mult > 1 && mult % 2) || mult > 4 || mult < 1) {
+        // ERROR -- leai mult not 1 2 or 4
+        core->stc = ERR_LEAIMULTNOT124;
     } else {
-        set_ireg_val_gpr(core, dest, base_v + (off_v << mult));
+        set_ireg_val_gpr(core, dest, base_v + (off_v << (mult / 2)));
     }
 }
 

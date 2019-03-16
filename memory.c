@@ -49,7 +49,7 @@ float _get_float(sysmem_t *smem, uint16_t addr) {
 
 
 // Allocates space for a new sysmem structure and returns a pointer to it.
-sysmem_t* sysmem_init() {
+sysmem_t* sysmem_init(uint8_t n_cores) {
     // allocate memory
     sysmem_t *smem = calloc(1, sizeof(sysmem_t));
     // set all of the function pointers
@@ -59,6 +59,8 @@ sysmem_t* sysmem_init() {
     smem->get_uint8 = &_get_uint8;
     smem->get_uint16 = &_get_uint16;
     smem->get_float = &_get_float;
+    // set the number of cpu cores
+    smem->n_cores = n_cores;
     return smem;
 }
 

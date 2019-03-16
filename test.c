@@ -15,31 +15,35 @@
 
 void print_memrange(sysmem_t*, uint16_t, uint16_t);
 void print_cpuregs(core_t*);
+void print_instr_tree(instr_node_t*);
 
 
 int main() {
     
     /* SETUP */
-    sysmem_t *smem = sysmem_init();
+    sysmem_t *smem = sysmem_init(1);
     core_t *core0 = core_init(0, smem);
     
+    instr_node_t *instr_tree =  instr_build_tree();
     
-    core0->seti(core0, IR0, 0xBEEF);
-    core0->seti(core0, IR1, 0x1234);
-    core0->seti(core0, IR2, 0xF00D);
-    core0->seti(core0, IR3, 0x03E8);
+    /*
+    core0->seti(core0, IR0, 0x0001);
+    core0->seti(core0, IR1, 0x0010);
+    core0->seti(core0, IR2, 0x0100);
+    core0->seti(core0, IR3, 0x1000);
     core0->setf(core0, FR0, 0.1);
     core0->setf(core0, FR1, 0.01);
     core0->setf(core0, FR2, 0.001);
     core0->setf(core0, FR3, 0.0001);
-    core0->leai(core0, RSP, IR3, 0, IRV);
     
     
+    core0->leai(core0, IR0, IR1, 4, IRV);
+
     printf("--------------------------------------------------------\n");
     print_cpuregs(core0);
     print_memrange(smem, 0xF05F, 0xF0AF);
     printf("\n");
-    
+
     core0->call(core0, 0x1111);
     core0->seti(core0, IR0, 0x0001);
     core0->seti(core0, IR1, 0x0002);
@@ -63,7 +67,7 @@ int main() {
     print_cpuregs(core0);
     print_memrange(smem, 0xF05F, 0xF0AF);
     printf("\n");
-    
+    */
     
     /* FINISH */
     core_delete(core0);
@@ -99,4 +103,10 @@ void print_cpuregs(core_t *core) {
     printf("     IR0     IR1     IR2     IR3     IRV\n");
     printf("   %5d   %5d   %5d   %5d   %5d\n", core->ir0, core->ir1, core->ir2, core->ir3, core->irv);
     printf("  0x%04X  0x%04X  0x%04X  0x%04X  0x%04X\n", core->ir0, core->ir1, core->ir2, core->ir3, core->irv);
+    printf("     FR0      FR1      FR2      FR3      FRV\n");
+    printf("  %7.4f  %7.4f  %7.4f  %7.4f  %7.4f\n", core->fr0, core->fr1, core->fr2, core->fr3, core->frv);
+}
+
+void print_instr_tree(instr_node_t *root) {
+    
 }

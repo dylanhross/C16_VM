@@ -15,10 +15,14 @@
 
 #include <stdlib.h>
 
-/* memory map:
+/* 
+Actually, isn't the memory map a bit more of an OS thing? Maybe at the hardware level it makes more sense just to 
+allocate a couple of areas the are read/write/executable and leave it at that... 
+
+memory map:
     0xFFFF -- maximum system memory address
         |
-        |   <-- stack space (4 kB)
+        |   <-- stack space (4 kB), each core gets its own stack space divided evenly from this space
         |
     0xF05F -- initial stack pointer address, stack grows toward larger addresses
         |
@@ -42,6 +46,10 @@ typedef struct sysmem {
     // 65536 bytes map to "physical" address space of 0x0000 to 0xFFFF, 
     // inclusive. Addressing is done using uint16_t values.
     uint8_t mem[65536];
+
+    // define number of cores (for separate stacks)
+    uint8_t n_cores;
+    uint8_t *core_stacks;
     
     // function pointers
     // Set the address in memory to a value of a specified type.
@@ -58,7 +66,7 @@ typedef struct sysmem {
 
 
 // Allocates space for a new sysmem structure and returns a pointer to it.
-sysmem_t* sysmem_init();
+sysmem_t* sysmem_init(uint8_t);
 
 
 // Frees memory associated with sysmem structure to de-initialize.

@@ -23,7 +23,7 @@ typedef enum {
     ERR_STACKOVERFLOW,  // stack overflow
     ERR_STACKUNDERFLOW, // stack underflow
     ERR_MEMACCRWBLK,    // memory access out of read/write block
-    ERR_LEAIMULTGT2,    // multiplier for leai instuction > 2
+    ERR_LEAIMULTNOT124, // multiplier for leai not 1, 2, or 4
     ERR_EXECOUTOFROBLK, // execute code from outside of RO memory block
     ERR_DECRZERO,       // decrement 0
     ERR_IREGOVERFLOW,   // integer register overflow
